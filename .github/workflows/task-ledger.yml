@@ -1,0 +1,33 @@
+name: Documentation QA Gate
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate-ledger:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate completed-task ledger references
+        run: python scripts/validate_task_ledger.py
+      - name: Validate architect memory exists
+        run: python scripts/check_architect_memory.py
+      - name: Prevent developer task PRs from editing QA or done records
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'task/')
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/changed_paths.txt
+          if grep -Eq '^docs/(TASKS_DONE\.md|CHATGPT_ARCHITECT_MEMORY\.md|qa/)' /tmp/changed_paths.txt; then
+            echo 'Developer task PR cannot edit official QA reviews, architect memory, or TASKS_DONE ledger.'
+            exit 1
+          fi
